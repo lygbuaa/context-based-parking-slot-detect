@@ -11,18 +11,18 @@ from parking_slot_detector.utils import eval_utils as eval_utils
 #################
 parser = argparse.ArgumentParser(description="context-based parking slot detector")
 
-parser.add_argument("--data_path", type=str, default="E:/PIL-park/",
+parser.add_argument("--data_path", type=str, default="pil_park/",
                     help="The path of the parking slot detection dataset")
-parser.add_argument("--pcr_test_weight", type=str, default="weight_pcr/trained/trained.ckpt",
+parser.add_argument("--pcr_test_weight", type=str, default="weight/weight_pcr/trained/trained.ckpt",
                     help="The path of the trained weights of pcr.")
 
-parser.add_argument("--psd_test_weight_type0", type=str, default="weight_psd/fine_tuned_type_0",
+parser.add_argument("--psd_test_weight_type0", type=str, default="weight/weight_psd/fine_tuned_type_0",
                     help="The path of the trained weights of fine-tuned to parallel type.")
 
-parser.add_argument("--psd_test_weight_type1", type=str, default="weight_psd/fine_tuned_type_1",
+parser.add_argument("--psd_test_weight_type1", type=str, default="weight/weight_psd/fine_tuned_type_1",
                     help="The path of the trained weights of fine-tuned to perpendicular type.")
 
-parser.add_argument("--psd_test_weight_type2", type=str, default="weight_psd/fine_tuned_type_2",
+parser.add_argument("--psd_test_weight_type2", type=str, default="weight/weight_psd/fine_tuned_type_2",
                     help="The path of the trained weights of fine-tuned to diagonal type.")
 
 parser.add_argument("--threshold_score", type=float, default=0.8,

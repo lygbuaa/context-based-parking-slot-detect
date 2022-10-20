@@ -1,5 +1,5 @@
 import argparse
-import os
+import os, sys
 
 from dataset import make_tfrecord, dataset_utils, data_augmentation
 
@@ -8,7 +8,7 @@ from dataset import make_tfrecord, dataset_utils, data_augmentation
 #################
 parser = argparse.ArgumentParser(description="context-based parking slot detector")
 
-parser.add_argument("--data_path", type=str, default="/home/mind3/project/dataset/PIL-park",
+parser.add_argument("--data_path", type=str, default="/home/hugoliu/github/context-based-parking-slot-detect/pil_park",
                     help="The path of the parking slot detection dataset.")
 
 args = parser.parse_args()
@@ -17,6 +17,8 @@ args = parser.parse_args()
 make_tfrecord.run(os.path.join(args.data_path, "test"), 'test')
 # Prepare data for PSD test
 dataset_utils.create_detector_data_file(os.path.join(args.data_path, "test"), os.path.join(args.data_path, "test.txt"), include_non_park=True)
+# we don't need train data
+sys.exit(0)
 
 # Data augmentation for train
 data_augmentation.run(os.path.join(args.data_path, "train"))

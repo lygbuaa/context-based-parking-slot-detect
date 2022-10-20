@@ -1,3 +1,12 @@
+# requirements
+1. `docker pull tensorflow/tensorflow:1.15.5-gpu-py3`
+   `python -m pip install --upgrade pip`
+   `apt-get install -y python3-opencv`
+   `pip install opencv-python`
+   `pip install tqdm`
+   `pip install shapely`
+   `pip install matplotlib`
+
 # context-based-parking-slot-detect
 
 Tensorflow implementation of [Context-based parking slot detection](https://ieeexplore.ieee.org/abstract/document/9199853) (IEEE Access)
