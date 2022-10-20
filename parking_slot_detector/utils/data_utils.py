@@ -147,6 +147,7 @@ def parse_data(line, class_num, img_size, anchors):
         boxes = np.concatenate((boxes, np.full(shape=(boxes.shape[0], 1), fill_value=1., dtype=np.float32)), axis=-1)
 
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32)
+    img = cv2.resize(img, (256, 768))
 
     # the input of yolo_v3 should be in range 0~1
     img = img / 255.

@@ -82,6 +82,7 @@ def evaluate(weight_path, eval_file, result_file):
     
     saver_to_restore = tf.train.Saver()
     weight_file = tf.train.latest_checkpoint(weight_path)
+    print("weight_file: {}".format(weight_file))
     
     with tf.Session() as sess:
         sess.run([tf.global_variables_initializer()])
@@ -90,7 +91,7 @@ def evaluate(weight_path, eval_file, result_file):
         time_part = '{:02d}{:02d}{:02d}_{:02d}{:02d}'.format(today.tm_year, today.tm_mon, today.tm_mday, today.tm_hour,
                                                              today.tm_min)
 
-        print('\n----------- start to eval -----------\n')
+        print('\n----------- start to eval -----------\n image: {}, img_cnt: {}'.format(image.shape, img_cnt))
     
         val_loss_total, val_loss_conf, val_loss_class, val_loss_quad = \
             AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter()
@@ -102,16 +103,20 @@ def evaluate(weight_path, eval_file, result_file):
     
         for j in trange(img_cnt):
             __image_ids, __y_pred, __loss = sess.run([image_ids, y_pred, loss], feed_dict={is_training: False})
+            print("confs: {}, probs: {}, quads: {}".format(__y_pred[0].shape, __y_pred[1].shape, __y_pred[2].shape))
             pred_content = get_preds_gpu(sess, gpu_nms_op, pred_quads_flag, pred_scores_flag, __image_ids, __y_pred)
-    
+            # print("pred_content: {}".format(pred_content))   
             if not FLAG_CALC_ONLY_TIME:
     
                 pic_path = filenames[j]
                 f.write('%d %s ' % (j, pic_path))
+                print("evaluate {}-{}".format(j, pic_path))
     
                 if len(pred_content) > 0:
                     for img_id, x_min, y_min, x_max, y_max, score, label, quad in pred_content:
                         f.write("%d %.8f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f "%(label, score, quad[0], quad[1], quad[2], quad[3], quad[4], quad[5], quad[6], quad[7]))
+                        print("img_id:{}, x_min:{}, y_min:{}, x_max:{}, y_max:{}, score:{}, label:{}, quad:{}".format(img_id, x_min, y_min, x_max, y_max, score, label, quad))
+                        
                         # gt_quads = gt_dict[img_id]
                         # park_score = calc_park_score(quad, gt_quads)
     

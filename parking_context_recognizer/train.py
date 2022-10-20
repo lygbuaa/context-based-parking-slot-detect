@@ -69,13 +69,15 @@ def evaluate(test_path, weight_file):
 
     image, type, angle = create_dataset(tfrecord_files, is_test=True)
     model_input = tf.keras.layers.Input(tensor=image)
+    print("image shape: {}".format(image.shape))
 
     test_model = model(model_input)
     test_model.load_weights(weight_file)
 
     start_time = time.time()
-    type_predict, angle_predict = test_model.predict(image, steps = int(len(filenames)/BATCH_SIZE + 1))
-    print("time : ", time.time() - start_time)
+    steps = int(len(filenames)/BATCH_SIZE + 1)
+    type_predict, angle_predict = test_model.predict(image, steps = steps)
+    print("time : {}, steps: {}".format(time.time()-start_time, steps))
 
     tf.keras.backend.clear_session()
 
