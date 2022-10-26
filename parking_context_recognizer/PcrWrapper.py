@@ -9,6 +9,7 @@ from tensorflow.keras import backend as K
 
 from parking_context_recognizer.utils import *
 from parking_context_recognizer.models import model_mobilenetv2 as pcr_model
+from parking_context_recognizer.config import *
 
 class PCRWrapper(object):
     def __init__(self, weight_file):

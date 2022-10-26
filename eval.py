@@ -1,5 +1,5 @@
 import argparse
-import os, sys
+import os, sys, json
 os.environ['CUDA_VISIBLE_DEVICES']="-1"
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -7,34 +7,41 @@ from PIL import Image
 import numpy as np
 import cv2
 
-# from parking_context_recognizer import train as pcr_train
-from parking_slot_detector import test as psd_test
-from parking_slot_detector import merge_three_type_result_files as merge_result
-from parking_slot_detector.utils import eval_utils as eval_utils
-
 from parking_context_recognizer.PcrWrapper import PCRWrapper
 from parking_context_recognizer.config import *
-# from parking_slot_detector.PsdWrapper import PSDWrapper
+
+from parking_context_recognizer import train as pcr_train
+from parking_slot_detector import test_carla as psd_test
+from parking_slot_detector import merge_three_type_result_files as merge_result
+from parking_slot_detector.utils import eval_utils as eval_utils
 
 #################
 # ArgumentParser
 #################
-parser = argparse.ArgumentParser(description="evaluate carla ipm images")
+parser = argparse.ArgumentParser(description="context-based parking slot detector")
+
 parser.add_argument("--carla_image_path", type=str, default="pil_park/carla_town04/image/",
                     help="The path of the parking slot detection dataset")
+parser.add_argument("--result_path", type=str, default="result/",
+                    help="The path of the parking slot detection result")
+
 parser.add_argument("--pcr_test_weight", type=str, default="weight/weight_pcr/trained/trained.ckpt",
                     help="The path of the trained weights of pcr.")
+
 parser.add_argument("--raw_image_w", type=int, default=640, help="")
 parser.add_argument("--raw_image_h", type=int, default=640, help="")
-# parser.add_argument("--psd_test_weight_type0", type=str, default="weight/weight_psd/fine_tuned_type_0",
-#                     help="The path of the trained weights of fine-tuned to parallel type.")
-# parser.add_argument("--psd_test_weight_type1", type=str, default="weight/weight_psd/fine_tuned_type_1",
-#                     help="The path of the trained weights of fine-tuned to perpendicular type.")
-# parser.add_argument("--psd_test_weight_type2", type=str, default="weight/weight_psd/fine_tuned_type_2",
-#                     help="The path of the trained weights of fine-tuned to diagonal type.")
-# parser.add_argument("--threshold_score", type=float, default=0.8,
-#                     help="Threshold of prediction which is determined TRUE")
 
+parser.add_argument("--psd_test_weight_type0", type=str, default="weight/weight_psd/fine_tuned_type_0",
+                    help="The path of the trained weights of fine-tuned to parallel type.")
+
+parser.add_argument("--psd_test_weight_type1", type=str, default="weight/weight_psd/fine_tuned_type_1",
+                    help="The path of the trained weights of fine-tuned to perpendicular type.")
+
+parser.add_argument("--psd_test_weight_type2", type=str, default="weight/weight_psd/fine_tuned_type_2",
+                    help="The path of the trained weights of fine-tuned to diagonal type.")
+
+parser.add_argument("--threshold_score", type=float, default=0.8,
+                    help="Threshold of prediction which is determined TRUE")
 
 class ImageWrapper(object):
     def __init__(self, image_path, raw_h, raw_w):
@@ -44,9 +51,9 @@ class ImageWrapper(object):
         self.img_tensor = None
         self.img_np = None
 
-    def jpeg_to_tensor(self):
-        # to be done
-        return None
+    def cv_read_resize(self, w, h):
+        self.img_np = cv2.imread(self.image_path)
+        self.img_np = cv2.resize(self.img_np, (w, h))
 
     def png_to_tensor(self):
         print("open image: {}".format(self.image_path))
@@ -100,29 +107,84 @@ class ImageWrapper(object):
     def save(self, output_path, img_np=None):
         if img_np is None:
             img_np = self.img_np
-        # img_u8 = tf.image.convert_image_dtype(img_png, dtype=tf.uint8)
-        # img_np = img_u8.eval()
-        # plt.figure(1)
-        # plt.imshow(img_np)
-        # plt.draw()
         Image.fromarray(img_np).save(output_path)
 
+    def plot_preds(self, dict, output_path):
+        idx = dict["idx"]
+        angle = dict["angle"]
+        type = dict["type"]
+        h = dict["det_h"]
+        w = dict["det_w"]
+        self.img_np = cv2.putText(
+            img = self.img_np,
+            text = "{:d}: {:d}, {:d}".format(idx, type, angle),
+            org = (w-100, 20),
+            fontFace = cv2.FONT_HERSHEY_DUPLEX,
+            fontScale = 0.6,
+            color = (0, 255, 255),
+            thickness = 1
+        )
+
+        pred_list = dict["pred"]
+        for pred in pred_list:
+            quads = pred["quad"]
+            is_empty = (int(pred["label"])==0)
+            xmin = int(pred["bbx"][0])
+            if xmin<0:
+                xmin = 0
+            ymin = int(pred["bbx"][1])
+            if ymin < 0:
+                ymin = 0
+            
+            N = 4
+            vertices = []
+            for j in range(N):
+                pt = (int(quads[2*j + 0]), int(quads[2*j + 1]))
+                vertices.append(pt)
+            # draw lines
+            if is_empty:
+                line_color = (0, 255, 0)
+            else:
+                line_color = (0, 0, 255)
+            for i in range(N):
+                cv2.line(
+                    img = self.img_np, 
+                    pt1 = vertices[i], 
+                    pt2 = vertices[(i+1)%N], 
+                    color = line_color,
+                    thickness = 2,
+                    lineType = cv2.LINE_8
+                    )
+            # print score
+            self.img_np = cv2.putText(
+                img = self.img_np,
+                text = "{:.2f}".format(pred["score"]),
+                org = (xmin, ymin),
+                fontFace = cv2.FONT_HERSHEY_DUPLEX,
+                fontScale = 0.6,
+                color = (0, 255, 255),
+                thickness = 1
+            )            
+
+        cv2.imwrite(output_path, self.img_np)
+
+
 class CarlaEvaluator(object):
-    def __init__(self):
-        self.args = parser.parse_args()
-        self.output_dir = "result/"
+    def __init__(self, args):
+        self.args = args
+        self.output_dir = self.args.result_path
         os.makedirs(self.output_dir, exist_ok=True)
         self.image_files = os.listdir(self.args.carla_image_path)
         print("total image: {}".format(len(self.image_files)))
         self.pcr_model = PCRWrapper(self.args.pcr_test_weight)
-        self.data_list = []
+        self.res_json_list = []
         # self.psd_model = PSDWrapper(self.args.psd_test_weight_type0)
 
     def make_pcr_inputs(self):
         counter = 0
         tensor_list = []
         for fname in self.image_files:
-            counter += 1
+            
             image_path = self.args.carla_image_path + fname
             img_wrapper = ImageWrapper(image_path, self.args.raw_image_h, self.args.raw_image_w)
             img_wrapper.png_to_tensor()
@@ -133,8 +195,10 @@ class CarlaEvaluator(object):
             tensor_list.append(img_tensor)
 
             dict = {}
+            dict["idx"] = counter
             dict["img_path"] = image_path
-            self.data_list.append(dict)
+            self.res_json_list.append(dict)
+            counter += 1
 
         self.pcr_input_tensor = tf.concat(tensor_list, axis=0)
         print("pcr_input_tensor: {}".format(self.pcr_input_tensor.shape))
@@ -169,31 +233,38 @@ class CarlaEvaluator(object):
         self.pcr_model.init(self.pcr_input_tensor)
         self.type_list, self.angle_list = self.pcr_model.run(self.pcr_input_tensor)
         print("type_list: {}, angle_list: {}".format(self.type_list, self.angle_list))
-        for idx, dict in enumerate(self.data_list):
+        for idx, dict in enumerate(self.res_json_list):
             dict["type"] = self.type_list[idx]
-            dict["angle"] = self.angle_list[idx]
+            dict["angle"] = int(self.angle_list[idx])
 
-        self.save_pcr_results(self.data_list)
-        # psd_test.evaluate(self.args.psd_test_weight_type0, "result/result_pcr_type_0.txt", "result/result_psd_type_0.txt")
-        # psd_test.evaluate(self.args.psd_test_weight_type1, "result/result_pcr_type_1.txt", "result/result_psd_type_1.txt")
-        # psd_test.evaluate(self.args.psd_test_weight_type2, "result/result_pcr_type_2.txt", "result/result_psd_type_2.txt")
-        # self.psd_model.run(self.data_list, self.args.psd_test_weight_type0)
+        self.save_pcr_results(self.res_json_list)
 
+    def run_psd(self):
+        # clear session to load new model
+        tf.keras.backend.clear_session()
+        # psd_test.evaluate(self.args.psd_test_weight_type0, "result/result_pcr_type_0.txt", "result/result_psd_type_0.txt", "result/type_0")
+        psd_test.evaluate(self.args.psd_test_weight_type1, "result/result_pcr_type_1.txt", "result/result_psd_type_1.txt", "result/type_1", self.res_json_list)
+        # psd_test.evaluate(self.args.psd_test_weight_type2, "result/result_pcr_type_2.txt", "result/result_psd_type_2.txt", "result/type_2")
+
+    def save_json(self):
+        # plot images
+        for dict in self.res_json_list:
+            img_wrapper = ImageWrapper(dict["img_path"], self.args.raw_image_h, self.args.raw_image_w)
+            img_wrapper.cv_read_resize(w=dict["det_w"], h=dict["det_h"])
+            output_path = "{}{}.png".format(self.output_dir, dict["idx"])
+            img_wrapper.plot_preds(dict, output_path)
+
+        # save json
+        json_file_path = self.output_dir + "/results.json"
+        with open(json_file_path, 'wt') as fd:
+            for dict in self.res_json_list:
+                json.dump(dict, fd, ensure_ascii=False)
+                fd.write("\n")
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    evaluator = CarlaEvaluator()
+    evaluator = CarlaEvaluator(args)
     evaluator.make_pcr_inputs()
     evaluator.run_pcr()
-
-    sys.exit(0)
-
-    # pcr_train.evaluate(os.path.join(args.data_path, "test"), args.pcr_test_weight)
-
-    psd_test.evaluate(args.psd_test_weight_type0, "result/result_pcr_type_0.txt", "result/result_psd_type_0.txt")
-    psd_test.evaluate(args.psd_test_weight_type1, "result/result_pcr_type_1.txt", "result/result_psd_type_1.txt")
-    psd_test.evaluate(args.psd_test_weight_type2, "result/result_pcr_type_2.txt", "result/result_psd_type_2.txt")
-
-    result_files = ["result/result_psd_type_0.txt","result/result_psd_type_1.txt","result/result_psd_type_2.txt"]
-    merge_result.merge_result(os.path.join(args.data_path, "test.txt"), result_files, "result/result.txt")
-    eval_utils.eval_result_file(os.path.join(args.data_path, "test.txt"), "result/result.txt", args.threshold_score)
+    evaluator.run_psd()
+    evaluator.save_json()

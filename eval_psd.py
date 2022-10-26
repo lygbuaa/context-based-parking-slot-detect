@@ -11,10 +11,12 @@ from parking_slot_detector.utils import eval_utils as eval_utils
 #################
 parser = argparse.ArgumentParser(description="context-based parking slot detector")
 
-parser.add_argument("--data_path", type=str, default="pil_park/",
+parser.add_argument("--carla_image_path", type=str, default="pil_park/carla_town04/image/",
                     help="The path of the parking slot detection dataset")
 parser.add_argument("--pcr_test_weight", type=str, default="weight/weight_pcr/trained/trained.ckpt",
                     help="The path of the trained weights of pcr.")
+parser.add_argument("--raw_image_w", type=int, default=640, help="")
+parser.add_argument("--raw_image_h", type=int, default=640, help="")
 
 parser.add_argument("--psd_test_weight_type0", type=str, default="weight/weight_psd/fine_tuned_type_0",
                     help="The path of the trained weights of fine-tuned to parallel type.")
