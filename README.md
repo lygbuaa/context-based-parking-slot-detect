@@ -1,3 +1,6 @@
+# tf2onnx
+1. pcr model export: `python -m tf2onnx.convert --saved-model ./saved_model/pcr_192_64_tf --output ./saved_model/pcr.onnx`
+
 # requirements
 1. `docker pull tensorflow/tensorflow:1.15.5-gpu-py3`
    `python -m pip install --upgrade pip`
@@ -6,6 +9,9 @@
    `pip install tqdm`
    `pip install shapely`
    `pip install matplotlib`
+
+2. `pip install -U tf2onnx`
+   `pip install onnxruntime`
 
 # context-based-parking-slot-detect
 

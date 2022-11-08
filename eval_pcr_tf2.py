@@ -1,19 +1,17 @@
 import argparse
 import os, sys, json
 os.environ['CUDA_VISIBLE_DEVICES']="-1"
-import tensorflow as tf
+import tensorflow as tf2
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
 import cv2
-
 from parking_context_recognizer.PcrWrapper import PCRWrapper
 from parking_context_recognizer.config import *
-
 from parking_context_recognizer import train as pcr_train
-from parking_slot_detector import test_carla as psd_test
-from parking_slot_detector import merge_three_type_result_files as merge_result
-from parking_slot_detector.utils import eval_utils as eval_utils
+# from parking_slot_detector import test_carla as psd_test
+# from parking_slot_detector import merge_three_type_result_files as merge_result
+# from parking_slot_detector.utils import eval_utils as eval_utils
 
 #################
 # ArgumentParser
@@ -57,11 +55,11 @@ class ImageWrapper(object):
 
     def png_to_tensor(self):
         print("open image: {}".format(self.image_path))
-        img_png = tf.gfile.FastGFile(self.image_path, 'rb').read()
-        self.img_tensor = tf.image.decode_png(img_png, channels=3)
-        with tf.Session("") as sess:
+        img_png = tf2.io.gfile.GFile(self.image_path, 'rb').read()
+        self.img_tensor = tf2.image.decode_png(img_png, channels=3)
+        with tf2.compat.v1.Session("") as sess:
             self.img_np = sess.run(self.img_tensor)
-        self.img_tensor = tf.image.resize(self.img_tensor, [self.raw_h, self.raw_w])
+        self.img_tensor = tf2.image.resize(self.img_tensor, [self.raw_h, self.raw_w])
         print("img_tensor: {}".format(self.img_tensor.shape))
         return self.img_tensor
 
@@ -70,12 +68,12 @@ class ImageWrapper(object):
 
     # output the same tensor with "parking_context_recognizer/utils.py"
     def resize_tensor(self, h=INPUT_HEIGHT, w=INPUT_WIDTH, standarization=True, expand_dim0=True):
-        self.img_tensor = tf.image.resize(self.img_tensor, [h, w])
+        self.img_tensor = tf2.image.resize(self.img_tensor, [h, w])
         # print("img_tensor: {}".format(self.img_tensor.shape))
         if standarization:
-            self.img_tensor = tf.image.per_image_standardization(self.img_tensor)
+            self.img_tensor = tf2.image.per_image_standardization(self.img_tensor)
         if expand_dim0:
-            self.img_tensor = tf.expand_dims(self.img_tensor, axis=0)
+            self.img_tensor = tf2.expand_dims(self.img_tensor, axis=0)
         return self.img_tensor
 
     # output the same tensor with "parking_context_recognizer/utils.py"
@@ -86,11 +84,11 @@ class ImageWrapper(object):
         h = int(3*w)
         print("crop size: h: {}, w: {}".format(h, w))
         self.img_tensor = self.img_tensor[0:h, 0:w, :]
-        self.img_tensor = tf.image.resize(self.img_tensor, [out_h, out_w])
+        self.img_tensor = tf2.image.resize(self.img_tensor, [out_h, out_w])
         if standarization:
-            self.img_tensor = tf.image.per_image_standardization(self.img_tensor)
+            self.img_tensor = tf2.image.per_image_standardization(self.img_tensor)
         if expand_dim0:
-            self.img_tensor = tf.expand_dims(self.img_tensor, axis=0)
+            self.img_tensor = tf2.expand_dims(self.img_tensor, axis=0)
         return self.img_tensor
 
     def plot_bbx(self, bbx_list):
@@ -176,7 +174,7 @@ class CarlaEvaluator(object):
         os.makedirs(self.output_dir, exist_ok=True)
         self.image_files = os.listdir(self.args.carla_image_path)
         print("total image: {}".format(len(self.image_files)))
-        self.pcr_model = PCRWrapper(self.args.pcr_test_weight)
+        self.pcr_model = PCRWrapper()
         self.res_json_list = []
         # self.psd_model = PSDWrapper(self.args.psd_test_weight_type0)
 
@@ -199,8 +197,10 @@ class CarlaEvaluator(object):
             dict["img_path"] = image_path
             self.res_json_list.append(dict)
             counter += 1
+            if counter > 0:
+                break
 
-        self.pcr_input_tensor = tf.concat(tensor_list, axis=0)
+        self.pcr_input_tensor = tf2.concat(tensor_list, axis=0)
         print("pcr_input_tensor: {}".format(self.pcr_input_tensor.shape))
 
     def save_pcr_results(self, data_list):
@@ -230,8 +230,8 @@ class CarlaEvaluator(object):
             f.close()
 
     def run_pcr(self):
-        self.pcr_model.init(self.pcr_input_tensor)
-        self.type_list, self.angle_list = self.pcr_model.run(self.pcr_input_tensor)
+        self.pcr_model.init_from_saved_model("./saved_model/pcr_192_64_tf")
+        self.type_list, self.angle_list = self.pcr_model.run_saved_model(self.pcr_input_tensor)
         print("type_list: {}, angle_list: {}".format(self.type_list, self.angle_list))
         for idx, dict in enumerate(self.res_json_list):
             dict["type"] = self.type_list[idx]
@@ -239,12 +239,13 @@ class CarlaEvaluator(object):
 
         self.save_pcr_results(self.res_json_list)
 
-    def run_psd(self):
-        # clear session to load new model
-        tf.keras.backend.clear_session()
-        # psd_test.evaluate(self.args.psd_test_weight_type0, "result/result_pcr_type_0.txt", "result/result_psd_type_0.txt", "result/type_0")
-        psd_test.evaluate(self.args.psd_test_weight_type1, "result/result_pcr_type_1.txt", "result/result_psd_type_1.txt", "result/type_1", self.res_json_list)
-        # psd_test.evaluate(self.args.psd_test_weight_type2, "result/result_pcr_type_2.txt", "result/result_psd_type_2.txt", "result/type_2")
+    # def run_psd(self):
+    #     # clear session to load new model
+    #     tf2.keras.backend.clear_session()
+    #     tf2.reset_default_graph()
+    #     # psd_test.evaluate(self.args.psd_test_weight_type0, "result/result_pcr_type_0.txt", "result/result_psd_type_0.txt", "result/type_0")
+    #     psd_test.evaluate(self.args.psd_test_weight_type1, "result/result_pcr_type_1.txt", "result/result_psd_type_1.txt", "result/type_1", self.res_json_list)
+    #     # psd_test.evaluate(self.args.psd_test_weight_type2, "result/result_pcr_type_2.txt", "result/result_psd_type_2.txt", "result/type_2")
 
     def save_json(self):
         # plot images
@@ -261,10 +262,20 @@ class CarlaEvaluator(object):
                 json.dump(dict, fd, ensure_ascii=False)
                 fd.write("\n")
 
+def test():
+    pcr_model = tf2.saved_model.load("./saved_model/pcr_192_64_tf")
+    print("pcr_model: {}".format(pcr_model.signatures))
+    infer = pcr_model.signatures["serving_default"]
+    print("pcr_model: {}".format(infer.graph))
+
 if __name__ == '__main__':
+    tf2.compat.v1.disable_eager_execution()
     args = parser.parse_args()
+    # test()
+    # sys.exit(0)
+
     evaluator = CarlaEvaluator(args)
     evaluator.make_pcr_inputs()
     evaluator.run_pcr()
-    evaluator.run_psd()
-    evaluator.save_json()
+    # evaluator.run_psd()
+    # evaluator.save_json()
