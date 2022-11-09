@@ -36,7 +36,7 @@ class PCRWrapper(object):
     def run_saved_model(self, img_tensor):
         type_predict, angle_predict = self.loaded(img_tensor)
         print("pcr_model output, type_predict: {}, \nangle_predict: {}".format(type_predict, angle_predict))
-        init = tf.compat.v1.global_variables_initializer()
+        init = tf2.compat.v1.global_variables_initializer()
         with tf2.compat.v1.Session("") as sess:
             sess.run(init)       
             type_predict = np.argmax(type_predict.eval(), axis=1)

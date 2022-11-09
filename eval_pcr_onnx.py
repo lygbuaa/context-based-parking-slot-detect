@@ -2,16 +2,11 @@ import argparse
 import os, sys, json
 os.environ['CUDA_VISIBLE_DEVICES']="-1"
 import tensorflow as tf2
-import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
 import cv2
-from parking_context_recognizer.PcrWrapper import PCRWrapper
 from parking_context_recognizer.config import *
-from parking_context_recognizer import train as pcr_train
-# from parking_slot_detector import test_carla as psd_test
-# from parking_slot_detector import merge_three_type_result_files as merge_result
-# from parking_slot_detector.utils import eval_utils as eval_utils
+from export.onnx_wrapper import OnnxWrapper
 
 #################
 # ArgumentParser
@@ -162,7 +157,7 @@ class ImageWrapper(object):
                 fontScale = 0.6,
                 color = (0, 255, 255),
                 thickness = 1
-            )            
+            )
 
         cv2.imwrite(output_path, self.img_np)
 
@@ -174,81 +169,43 @@ class CarlaEvaluator(object):
         os.makedirs(self.output_dir, exist_ok=True)
         self.image_files = os.listdir(self.args.carla_image_path)
         print("total image: {}".format(len(self.image_files)))
-        self.pcr_model = PCRWrapper()
         self.res_json_list = []
-        # self.psd_model = PSDWrapper(self.args.psd_test_weight_type0)
+        self.onnx_pcr = OnnxWrapper()
+        self.onnx_pcr.load_onnx_model("./export/pcr.onnx")
 
-    def make_pcr_inputs(self):
+    def post_process(self, result):
+        angle = result[0][0][0]
+        angle = angle * 180. - 90.
+        return angle
+
+    def run_pcr(self):
         counter = 0
-        tensor_list = []
         for fname in self.image_files:
-            
             image_path = self.args.carla_image_path + fname
             img_wrapper = ImageWrapper(image_path, self.args.raw_image_h, self.args.raw_image_w)
             img_wrapper.png_to_tensor()
             img_tensor = img_wrapper.crop_resize_tensor(out_h=INPUT_HEIGHT, out_w=INPUT_WIDTH, standarization=True)
+            init = tf2.compat.v1.global_variables_initializer()
+            with tf2.compat.v1.Session("") as sess:
+                sess.run(init)
+                img_np = img_tensor.eval()
+                dict = {}
+                dict["idx"] = counter
+                dict["img_path"] = image_path
+                self.res_json_list.append(dict)
+                result = self.onnx_pcr.run_onnx_model(self.onnx_pcr.ortss, [img_np])
+                angle = self.post_process(result)
+                print("[{}]- input shape: {}, angle: {}".format(counter, img_np.shape, angle))
+                dict["angle"] = int(angle)
+                counter += 1
 
-            # if counter == 1:
-            #     self.pcr_init_tensor = img_tensor
-            tensor_list.append(img_tensor)
-
-            dict = {}
-            dict["idx"] = counter
-            dict["img_path"] = image_path
-            self.res_json_list.append(dict)
-            counter += 1
-            # if counter > 0:
-            #     break
-
-        self.pcr_input_tensor = tf2.concat(tensor_list, axis=0)
-        print("pcr_input_tensor: {}".format(self.pcr_input_tensor.shape))
-
-    def save_pcr_results(self, data_list):
-        os.makedirs('result', exist_ok=True)
-        os.makedirs('result/type_0', exist_ok=True)
-        os.makedirs('result/type_1', exist_ok=True)
-        os.makedirs('result/type_2', exist_ok=True)
-        f_0 = open(os.path.join('result', 'result_pcr_type_0.txt'), 'wt')
-        f_1 = open(os.path.join('result', 'result_pcr_type_1.txt'), 'wt')
-        f_2 = open(os.path.join('result', 'result_pcr_type_2.txt'), 'wt')
-        f_list = [f_0, f_1, f_2]
-        type_count = [0, 0, 0]
-        # for filename, type, angle in zip(filenames, self.type_predict, self.angle_predict):
-        for dict in data_list:
-            for type in [0, 1, 2]:
-                # type = dict["type"]
-                angle = dict["angle"]
-                # angle = 0
-                filepath = dict["img_path"]
-                # if type > 2:
-                #     continue
-                f = f_list[type]
-                count = type_count[type]
-                f.write('{} {} {} {} {}\n'.format(count, filepath, INPUT_WIDTH, INPUT_HEIGHT, int(round(angle, 0))))
-                type_count[type] += 1
-        for f in f_list:
-            f.close()
-
-    def run_pcr(self):
-        self.pcr_model.init_from_saved_model("./saved_model/pcr_192_64_tf")
-        self.pcr_model.init_from_ckpt(self.args.pcr_test_weight, self.pcr_input_tensor)
-        # self.type_list, self.angle_list = self.pcr_model.run_ckpt(self.pcr_input_tensor)
-        # saved model input shape freezed: 1x192x64x3
-        self.type_list, self.angle_list = self.pcr_model.run_saved_model(self.pcr_input_tensor)
-        print("type_list: {}, angle_list: {}".format(self.type_list, self.angle_list))
-        for idx, dict in enumerate(self.res_json_list):
-            dict["type"] = self.type_list[idx]
-            dict["angle"] = int(self.angle_list[idx])
-
-        self.save_pcr_results(self.res_json_list)
-
-    # def run_psd(self):
-    #     # clear session to load new model
-    #     tf2.keras.backend.clear_session()
-    #     tf2.reset_default_graph()
-    #     # psd_test.evaluate(self.args.psd_test_weight_type0, "result/result_pcr_type_0.txt", "result/result_psd_type_0.txt", "result/type_0")
-    #     psd_test.evaluate(self.args.psd_test_weight_type1, "result/result_pcr_type_1.txt", "result/result_psd_type_1.txt", "result/type_1", self.res_json_list)
-    #     # psd_test.evaluate(self.args.psd_test_weight_type2, "result/result_pcr_type_2.txt", "result/result_psd_type_2.txt", "result/type_2")
+    # def run_pcr(self):
+    #     self.pcr_model.init_from_saved_model("./saved_model/pcr_192_64_tf")
+    #     self.type_list, self.angle_list = self.pcr_model.run_saved_model(self.pcr_input_tensor)
+    #     print("type_list: {}, angle_list: {}".format(self.type_list, self.angle_list))
+    #     for idx, dict in enumerate(self.res_json_list):
+    #         dict["type"] = self.type_list[idx]
+    #         dict["angle"] = int(self.angle_list[idx])
 
     def save_images(self):
         # plot images
@@ -275,11 +232,6 @@ def test():
 if __name__ == '__main__':
     tf2.compat.v1.disable_eager_execution()
     args = parser.parse_args()
-    # test()
-    # sys.exit(0)
-
     evaluator = CarlaEvaluator(args)
-    evaluator.make_pcr_inputs()
     evaluator.run_pcr()
-    # evaluator.run_psd()
     evaluator.save_json()
