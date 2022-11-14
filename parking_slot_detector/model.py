@@ -13,9 +13,10 @@ import tf_slim as slim
 
 from parking_slot_detector.utils.layer_utils import conv2d, darknet53_body, yolo_block, upsample_layer
 
-class yolov3(object):
+class yolov3(tf.Module):
 
     def __init__(self, class_num, anchors, use_label_smooth=False, use_focal_loss=False, batch_norm_decay=0.999, weight_decay=5e-4, use_static_shape=True):
+        super(yolov3, self).__init__()
         self.class_num = class_num
         self.anchors = anchors
         self.batch_norm_decay = batch_norm_decay
@@ -23,6 +24,15 @@ class yolov3(object):
         self.use_focal_loss = use_focal_loss
         self.weight_decay = weight_decay
         self.use_static_shape = use_static_shape
+
+    # @tf2.function(input_signature=[tf.TensorSpec(shape=[1, 640, 640, 3], dtype=tf.float32)])
+    # def __call__(self, inputs):
+    #     return self.forward(inputs=inputs, is_training=False, reuse=False)
+
+    # @tf2.function(input_signature=[tf.TensorSpec([1, 640, 640, 3], tf.float32), tf.TensorSpec([1], tf.float32)])
+    def __call__(self, image, angle):
+        pred_feature_maps = self.forward(inputs=image, is_training=False, reuse=False)
+        return self.predict(pred_feature_maps, angle)
 
     def forward(self, inputs, is_training=False, reuse=False):
         # it will be used later

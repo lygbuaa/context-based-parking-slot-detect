@@ -47,8 +47,10 @@ class PsdWrapper(object):
 
         yolo_model = yolov3(self.class_num, self.anchors)
         with tf1.variable_scope('yolov3'):
-            pred_feature_maps = yolo_model.forward(img_tf1, is_training=False)
-        y_pred = yolo_model.predict(pred_feature_maps, angle_tf1)
+            confs, probs, quads = yolo_model(img_tf1, angle_tf1)
+            # pred_feature_maps = yolo_model.forward(img_tf1, is_training=False)
+            # feature_map_1, feature_map_2, feature_map_3 = yolo_model(img_tf1)
+        # y_pred = yolo_model.predict(pred_feature_maps, angle_tf1)
         saver_to_restore = tf1.train.Saver()
         weight_file = tf1.train.latest_checkpoint(self.weight_path)
         print("load weight_file: {}".format(weight_file))
@@ -70,27 +72,37 @@ class PsdWrapper(object):
                 img_np = img_np / 255.0
                 img_np = np.expand_dims(img_np, axis=0)
 
-                y_pred_, pred_feature_maps_ = sess.run([y_pred, pred_feature_maps], feed_dict={angle_tf1: [img_angle], img_tf1: img_np})
-                # print("y_pred_: {}".format(y_pred_))
-                print("confs: {}, probs: {}, quads: {}".format(y_pred_[0].shape, y_pred_[1].shape, y_pred_[2].shape))
-                pred_content = get_preds_gpu(sess, gpu_nms_op, pred_quads_flag, pred_scores_flag, [idx], y_pred_)
-                print("pred_content: {}".format(len(pred_content)))
-                pk_list = []
-                json_list[idx]["det_h"] = int(INPUT_HEIGHT)
-                json_list[idx]["det_w"] = int(INPUT_WIDTH)
-                json_list[idx]["type"] = 1
-                if len(pred_content) > 0:
-                    for img_id, x_min, y_min, x_max, y_max, score, label, quad in pred_content:
-                        print("img_id:{}, x_min:{}, y_min:{}, x_max:{}, y_max:{}, score:{}, label:{}, quad:{}".format(img_id, x_min, y_min, x_max, y_max, score, label, quad))
-                        bbx = [x_min, y_min, x_max, y_max]
-                        # bbx_list.append(bbx)
-                        pk_dict = {}
-                        pk_dict["bbx"] = [int(val) for val in bbx]
-                        pk_dict["quad"] = [int(val) for val in quad]
-                        pk_dict["score"] = float(score)
-                        pk_dict["label"] = int(label)
-                        pk_list.append(pk_dict)
-                json_list[idx]["pred"] = pk_list
+                # y_pred_, angle_tf1_ = sess.run([y_pred, angle_tf1], feed_dict={angle_tf1: [img_angle], img_tf1: img_np})
+                # feature_map_1_, feature_map_2_, feature_map_3_ = sess.run([feature_map_1, feature_map_2, feature_map_3], feed_dict={angle_tf1: [img_angle], img_tf1: img_np})
+                confs_, probs_, quads_ = sess.run([confs, probs, quads], feed_dict={angle_tf1: [img_angle], img_tf1: img_np})
+                # print("feature_map_1_: {}, feature_map_2_: {}, feature_map_3_: {}".format(feature_map_1_.shape, feature_map_2_.shape, feature_map_3_.shape))
+                # print("confs: {}, probs: {}, quads: {}".format(y_pred_[0].shape, y_pred_[1].shape, y_pred_[2].shape))
+                print("confs: {}, probs: {}, quads: {}".format(confs_.shape, probs_.shape, quads_.shape))
+                # pred_content = get_preds_gpu(sess, gpu_nms_op, pred_quads_flag, pred_scores_flag, [idx], y_pred_)
+                # print("pred_content: {}".format(len(pred_content)))
+                # pk_list = []
+                # json_list[idx]["det_h"] = int(INPUT_HEIGHT)
+                # json_list[idx]["det_w"] = int(INPUT_WIDTH)
+                # json_list[idx]["type"] = 1
+                # if len(pred_content) > 0:
+                #     for img_id, x_min, y_min, x_max, y_max, score, label, quad in pred_content:
+                #         print("img_id:{}, x_min:{}, y_min:{}, x_max:{}, y_max:{}, score:{}, label:{}, quad:{}".format(img_id, x_min, y_min, x_max, y_max, score, label, quad))
+                #         bbx = [x_min, y_min, x_max, y_max]
+                #         # bbx_list.append(bbx)
+                #         pk_dict = {}
+                #         pk_dict["bbx"] = [int(val) for val in bbx]
+                #         pk_dict["quad"] = [int(val) for val in quad]
+                #         pk_dict["score"] = float(score)
+                #         pk_dict["label"] = int(label)
+                #         pk_list.append(pk_dict)
+                # json_list[idx]["pred"] = pk_list
+            # signature: feature_map_1_: (1, 20, 20, 45), feature_map_2_: (1, 40, 40, 45), feature_map_3_: (1, 80, 80, 45)
+            # signature: confs: (1, 25200, 1), probs: (1, 25200, 2), quads: (1, 25200, 8)
+            tf1.saved_model.simple_save(sess, "saved_model/psd_640_640_tf", inputs={"image": img_tf1, "angle": angle_tf1}, outputs={"confs": confs, "probs": probs, "quads": quads})
+
+        # tf2.function can't apply on tf1 model
+        # call = yolo_model.__call__.get_concrete_function([tf1.TensorSpec([1, 640, 640, 3], tf1.float32), tf1.TensorSpec([1], tf1.float32)])
+        # tf2.saved_model.save(yolo_model, "saved_model/psd_640_640_tf")#, signatures=call)
 
     def __call__(self, img):
         pass

@@ -185,9 +185,12 @@ class CarlaEvaluator(object):
             obj = json.loads(line)
             self.res_json_list.append(obj)
             counter += 1
+            if counter == 1:
+                break
         print("total dataset: {}, json list: {}".format(counter, self.res_json_list))
 
     def run_psd(self):
+        # tf1.reset_default_graph()
         self.psd_wrapper.run(self.res_json_list)
 
     def save_images(self):
@@ -221,5 +224,5 @@ if __name__ == '__main__':
     evaluator = CarlaEvaluator(args)
     evaluator.make_psd_inputs()
     evaluator.run_psd()
-    evaluator.save_json()
+    # evaluator.save_json()
     # evaluator.save_images()

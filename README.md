@@ -1,5 +1,8 @@
 # tf2onnx
 1. pcr model export: `python -m tf2onnx.convert --saved-model ./saved_model/pcr_192_64_tf --output ./saved_model/pcr.onnx`
+2. psd model export: `python -m tf2onnx.convert --saved-model ./saved_model/psd_640_640_tf --output ./saved_model/psd.onnx`
+   yolov3::forward + predict() --> onnx
+   After optimization: BatchNormalization -72 (72->0), Cast -14 (14->0), Concat +7 (19->26), Const -346 (531->185), Cos -5 (6->1), Einsum -12 (12->0), Gather +27 (0->27), Identity -3 (3->0), MatMul +12 (0->12), Max +12 (0->12), Mul -11 (24->13), Neg -13 (15->2), Reshape +25 (12->37), Shape +13 (2->15), Sin -5 (6->1), Squeeze +12 (0->12), Transpose -278 (298->20)
 
 # requirements
 1. `docker pull tensorflow/tensorflow:1.15.5-gpu-py3`
