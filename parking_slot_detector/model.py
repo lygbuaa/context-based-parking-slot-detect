@@ -4,10 +4,12 @@
 
 from __future__ import division, print_function
 
-import tensorflow as tf
+import tensorflow as tf2
+tf=tf2.compat.v1
 import math
-
-slim = tf.contrib.slim
+# slim = tf.contrib.slim
+# tf2.x deprecated tf1.contrib.slim, pip install --upgrade tf_slim
+import tf_slim as slim
 
 from parking_slot_detector.utils.layer_utils import conv2d, darknet53_body, yolo_block, upsample_layer
 
