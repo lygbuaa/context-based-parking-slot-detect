@@ -176,7 +176,10 @@ class CarlaEvaluator(object):
     def post_process(self, result):
         angle = result[0][0][0]
         angle = angle * 180. - 90.
-        return angle
+        # need np.argmax, [7.2e-07 9.5e-06 2.3e-07 9.9e-01]
+        type_probs = result[1][0]
+        type = np.argmax(type_probs, axis=0)
+        return angle, type
 
     def run_pcr(self):
         counter = 0
@@ -194,9 +197,10 @@ class CarlaEvaluator(object):
                 dict["img_path"] = image_path
                 self.res_json_list.append(dict)
                 result = self.onnx_pcr.run_onnx_model(self.onnx_pcr.ortss, [img_np])
-                angle = self.post_process(result)
-                print("[{}]- input shape: {}, angle: {}".format(counter, img_np.shape, angle))
+                angle, type = self.post_process(result)
+                print("[{}]- input shape: {}, angle: {}, type: {}".format(counter, img_np.shape, angle, type))
                 dict["angle"] = int(angle)
+                dict["type"] = int(type)
                 counter += 1
 
     # def run_pcr(self):

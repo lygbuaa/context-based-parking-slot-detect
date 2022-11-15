@@ -183,10 +183,14 @@ class CarlaEvaluator(object):
             lines = fd.readlines()
         for line in lines:
             obj = json.loads(line)
+            # first image detect nothing
+            # if counter == 0:
+            #     counter += 1
+            #     continue
+            # else:
             self.res_json_list.append(obj)
             counter += 1
-            if counter == 1:
-                break
+
         print("total dataset: {}, json list: {}".format(counter, self.res_json_list))
 
     def run_psd(self):
@@ -224,5 +228,5 @@ if __name__ == '__main__':
     evaluator = CarlaEvaluator(args)
     evaluator.make_psd_inputs()
     evaluator.run_psd()
-    # evaluator.save_json()
-    # evaluator.save_images()
+    evaluator.save_json()
+    evaluator.save_images()
