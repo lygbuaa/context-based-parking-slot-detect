@@ -6,6 +6,8 @@ import numpy as np
 import onnx
 import onnxruntime as ort
 # import onnxsim
+# pip install onnxmltools
+from onnxmltools.utils import float16_converter
 
 class OnnxWrapper(object):
     def __init__(self):
@@ -108,17 +110,17 @@ class OnnxWrapper(object):
             # print("pcr graph: {}".format(onnx.helper.printable_graph(model.graph)))
         except Exception as e:
             print("onnx check model error: {}".format(e))
-            return None, None
+            # return None, None
 
         ortss = self.load_onnx_model(model_path)
         image = np.random.rand(1, 192, 64, 3).astype(np.float32)
-        # self.benchmark(ortss, [image], nwarmup=100, nruns=100)
+        self.benchmark(ortss, [image], nwarmup=100, nruns=100)
         result = self.run_onnx_model(ortss, [image])
         angle = result[0][0][0]*180.0 - 90.0
         type_probs = result[1][0]
         type = np.argmax(type_probs, axis=0)
         print("pcr output, angle: {}, type: {}".format(angle, type))
-        return angle, type
+        return True
 
     # inputs: image float32[1,640,640,3], angle float32[1]
     # outpus: boxes, labels, quads, scores
@@ -129,12 +131,13 @@ class OnnxWrapper(object):
             # print("pcr graph: {}".format(onnx.helper.printable_graph(model.graph)))
         except Exception as e:
             print("onnx check model error: {}".format(e))
-            return None, None
+            # return False
 
         ortss = self.load_onnx_model(model_path)
         image = np.random.rand(1, 640, 640, 3).astype(np.float32)
         angle = np.random.rand(1).astype(np.float32)
-        # self.benchmark(ortss, [angle, image], nwarmup=10, nruns=100)
+        self.benchmark(ortss, [angle, image], nwarmup=20, nruns=100)
+        return True
 
         for idx in range(10):
             # ortss = self.load_onnx_model(model_path)
@@ -147,8 +150,7 @@ class OnnxWrapper(object):
             quads = result[2]
             scores = result[3]
             print("psd output, boxes: {}, scores: {}, labels: {}, quads: {}".format(boxes, scores, labels, quads))
-        return angle, type
-
+        return True
 
     def test_resnet50(self, model_path):
         model = onnx.load(model_path)
@@ -158,11 +160,26 @@ class OnnxWrapper(object):
         image = np.random.rand(1, 3, 224, 224).astype(np.float32)
         result = self.run_onnx_model(ortss, [image])
 
+    def fp32_to_fp16(self, model_path):
+        model_fp32 = onnx.load(model_path)
+        try:
+            onnx.checker.check_model(model_fp32)
+            # print("pcr graph: {}".format(onnx.helper.printable_graph(model.graph)))
+        except Exception as e:
+            print("onnx check model error: {}".format(e))
+            return None, None
+        
+        model_fp16 = float16_converter.convert_float_to_float16(model_fp32, keep_io_types=True)
+        new_path = model_path + ".fp16"
+        onnx.save(model_fp16, new_path)
+
 if __name__ == "__main__":
     resnet50_path = "./resnet50-v1-12/resnet50-v1-12.onnx"
     pcr_path = "./pcr.onnx"
-    psd_path = "./psd.nms.onnx"
+    psd_path = "./psd.fp16.onnx"
     onwp = OnnxWrapper()
+    # onwp.fp32_to_fp16(pcr_path)
+    # onwp.fp32_to_fp16(psd_path)
     onwp.run_psd(psd_path)
     # onwp.run_pcr(pcr_path)
     # onwp.print_version()
