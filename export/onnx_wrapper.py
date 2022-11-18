@@ -36,7 +36,10 @@ class OnnxWrapper(object):
 
     def load_onnx_model(self, model_path):
         provider = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        self.ortss = ort.InferenceSession(model_path, providers=provider)
+        sess_options = ort.SessionOptions()
+        # opt level: ORT_DISABLE_ALL < ORT_ENABLE_BASIC < ORT_ENABLE_EXTENDED < ORT_ENABLE_ALL
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        self.ortss = ort.InferenceSession(model_path, providers=provider, sess_options=sess_options)
         print("load model {} onto {}".format(model_path, self.ortss.get_providers()))
         return self.ortss
 
@@ -176,7 +179,7 @@ class OnnxWrapper(object):
 if __name__ == "__main__":
     resnet50_path = "./resnet50-v1-12/resnet50-v1-12.onnx"
     pcr_path = "./pcr.onnx"
-    psd_path = "./psd.fp16.onnx"
+    psd_path = "./psd.nms.onnx"
     onwp = OnnxWrapper()
     # onwp.fp32_to_fp16(pcr_path)
     # onwp.fp32_to_fp16(psd_path)
