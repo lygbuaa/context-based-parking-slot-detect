@@ -250,6 +250,33 @@ class CarlaEvaluator(object):
                 json.dump(dict, fd, ensure_ascii=False)
                 fd.write("\n")
 
+    def get_mean_std(self):
+        ave_mean = np.array([0.0, 0.0, 0.0])
+        ave_std = np.array([0.0, 0.0, 0.0])
+        counter = 0
+        for idx, dict in enumerate(self.res_json_list):
+            img_path = dict["img_path"]
+
+            img_np = cv2.imread(img_path)
+            img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB).astype(np.float32)
+            # img_np = cv2.resize(img_np, (INPUT_WIDTH, INPUT_HEIGHT))
+            # the input of yolo_v3 should be in range 0~1
+            # img_np = img_np / 255.0
+            # img_np = np.expand_dims(img_np, axis=0)
+            # print("img_np: {}".format(img_np.shape))
+            img_mean = img_np.mean(axis=(0,1))
+            img_std = img_np.std(axis=(0,1))
+            print("[{}]-img_mean: {}, img_std: {}".format(idx, img_mean, img_std))
+            ave_mean += img_mean
+            ave_std += img_std
+            counter += 1
+        ave_mean /= counter
+        ave_std /= counter
+        print("ave_mean: {}, ave_std: {}".format(ave_mean, ave_std))
+        print("normalized ave_mean: {}, ave_std: {}".format(ave_mean/255.0, ave_std/255.0))
+       
+
+
 def test():
     pcr_model = tf2.saved_model.load("./saved_model/pcr_192_64_tf")
     print("pcr_model: {}".format(pcr_model.signatures))
@@ -261,6 +288,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     evaluator = CarlaEvaluator(args)
     evaluator.make_psd_inputs()
-    evaluator.run_psd()
-    evaluator.save_json()
-    evaluator.save_images()
+    evaluator.get_mean_std()
+    # evaluator.run_psd()
+    # evaluator.save_json()
+    # evaluator.save_images()

@@ -1,3 +1,7 @@
+# carla ipm standardization
+1. ave_mean: [131.30127093 129.13795222 131.59807384], ave_std: [59.52365323 58.87736721 59.81127821]
+2. normalized ave_mean: [0.51490694 0.50642334 0.51607088], ave_std: [0.23342609 0.23089164 0.23455403]
+
 # tf2onnx
 1. pcr model export: `python -m tf2onnx.convert --saved-model ./saved_model/pcr_192_64_tf --output ./saved_model/pcr.onnx`
 2. psd model export: `python -m tf2onnx.convert --saved-model ./saved_model/psd_640_640_tf --output ./saved_model/psd.onnx`

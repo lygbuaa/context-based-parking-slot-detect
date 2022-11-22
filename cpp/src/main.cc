@@ -31,12 +31,14 @@ int main(int argc, char* argv[]){
 
     is_cuda_avaliable();
 
-    const std::string dataset_dir = "/home/hugoliu/github/context-based-parking-slot-detect/pil_park/carla_town04/image";
-    const std::string pcr_model_path = "/home/hugoliu/github/context-based-parking-slot-detect/export/pcr.onnx";
-    const std::string psd_model_path = "/home/hugoliu/github/context-based-parking-slot-detect/export/psd.nms.onnx";
+    const std::string base_dir = "/mnt/c/work/github/context-based-parking-slot-detect/";
+    const std::string dataset_dir = base_dir + "pil_park/carla_town04/image";
+    const std::string pcr_model_path = base_dir + "export/pcr.onnx";
+    const std::string psd_model_path = base_dir + "export/psd.nms.onnx";
     psdonnx::OnnxWrapper onnx_wrapper;
     // const std::deque<std::string> img_path_list = onnx_wrapper.list_dir(dataset_dir);
     onnx_wrapper.load_pcr_model(pcr_model_path);
+    onnx_wrapper.load_psd_model(psd_model_path);
     // onnx_wrapper.run_pcr(img_path_list);
 
     return 0;
