@@ -1,6 +1,19 @@
+# cpp
+1. pcr model:
+input[0]-input_2, type: 1, dims: (1,192,64,3,)
+output[0]-angle_output, type: 1, dims: (1,1,)
+output[1]-type_output, type: 1, dims: (1,4,)
+2. psd model:
+input[0]-angle, type: 1, dims: (1,)
+input[1]-image, type: 1, dims: (1,640,640,3,)
+output[0]-boxes, type: 1, dims: (-1,4,)
+output[1]-labels, type: 7, dims: (-1,)
+output[2]-quads, type: 1, dims: (-1,8,)
+output[3]-scores, type: 1, dims: (-1,)
+
 # carla ipm standardization
-1. ave_mean: [131.30127093 129.13795222 131.59807384], ave_std: [59.52365323 58.87736721 59.81127821]
-2. normalized ave_mean: [0.51490694 0.50642334 0.51607088], ave_std: [0.23342609 0.23089164 0.23455403]
+1. ave_mean_rgb: [131.30127093 129.13795222 131.59807384], ave_std: [59.52365323 58.87736721 59.81127821]
+2. normalized ave_mean_rgb: [0.51490694 0.50642334 0.51607088], ave_std: [0.23342609 0.23089164 0.23455403]
 
 # tf2onnx
 1. pcr model export: `python -m tf2onnx.convert --saved-model ./saved_model/pcr_192_64_tf --output ./saved_model/pcr.onnx`

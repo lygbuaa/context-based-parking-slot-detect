@@ -36,9 +36,12 @@ int main(int argc, char* argv[]){
     const std::string pcr_model_path = base_dir + "export/pcr.onnx";
     const std::string psd_model_path = base_dir + "export/psd.nms.onnx";
     psdonnx::OnnxWrapper onnx_wrapper;
+    // psdonnx::PreProcessor::test();
     // const std::deque<std::string> img_path_list = onnx_wrapper.list_dir(dataset_dir);
-    onnx_wrapper.load_pcr_model(pcr_model_path);
+    // onnx_wrapper.load_pcr_model(pcr_model_path);
+    // onnx_wrapper.test_pcr_model();
     onnx_wrapper.load_psd_model(psd_model_path);
+    onnx_wrapper.test_psd_model();
     // onnx_wrapper.run_pcr(img_path_list);
 
     return 0;

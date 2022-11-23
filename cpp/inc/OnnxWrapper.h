@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <libgen.h>
 #include <chrono>
+#include <onnxruntime_c_api.h>
 #include <onnxruntime_cxx_api.h>
 #include "PreProcessor.h"
 
@@ -37,6 +38,20 @@ public:
         std::vector<OrtValue*> output_tensors;
     }ORT_S_t;
 
+    typedef struct{
+        // x0, y0, x1, y1
+        float bbox[4] = {-1.0f};
+        int64_t label = -1;
+        float quads[8] = {-1.0f};
+        float score = -1.0f;
+    }Parklot_t;
+
+    typedef struct{
+        float angle = 0.0f;
+        int type = -1;
+        std::vector<Parklot_t> parklots;
+    }Detections_t;
+
 private:
     const OrtApi* g_ort_ = nullptr;
     const OrtApiBase* g_ort_base_ = nullptr;
@@ -47,6 +62,7 @@ private:
 
     ORT_S_t g_pcr_s_;
     ORT_S_t g_psd_s_;
+    Detections_t g_det_;
 
 public:
     OnnxWrapper(){
@@ -57,7 +73,7 @@ public:
         destroy_ort();
     }
 
-    void run_pcr(const std::deque<std::string>& img_path_list){
+    void test_carla_ipm(const std::deque<std::string>& img_path_list){
         const int N = img_path_list.size();
         for(int i=0; i<N; ++i){
             std::cout << i << ", " << img_path_list[i] << std::endl;
@@ -72,18 +88,225 @@ public:
         return load_model(model_path, g_psd_s_);
     }
 
-    bool run_pcr_model(const cv::Mat& img){
+    bool run_pcr_model(const cv::Mat& img, Detections_t& det){
+        /* define input tensor size, could retrieve from g_pcr_s_, too */
+        static constexpr int PCR_W = 64;
+        static constexpr int PCR_H = 192;
         /* preprocess */
+        const int h = img.rows;
+        const int w = img.cols;
+        // calc roi_w:roi_h = 1:3
+        int roi_w = h / 3;
+        int roi_h = roi_w * 3;
+        cv::Rect roi(0, 0, roi_w, roi_h);
+        cv::Mat croped_img = PreProcessor::crop(img, roi);
+        cv::Mat resized_img = PreProcessor::resize(img, PCR_W, PCR_H);
+        cv::Mat stand_img = PreProcessor::standardize(resized_img);
+
+        /* prepare input data */
+        std::vector<const char*>& input_node_names = g_pcr_s_.input_node_names;
+        std::vector<std::vector<int64_t>>& input_node_dims = g_pcr_s_.input_node_dims;
+        std::vector<ONNXTensorElementDataType>& input_types = g_pcr_s_.input_types;
+        std::vector<OrtValue*>& input_tensors = g_pcr_s_.input_tensors;
+
+        std::vector<const char*>& output_node_names = g_pcr_s_.output_node_names;
+        std::vector<std::vector<int64_t>>& output_node_dims = g_pcr_s_.output_node_dims;
+        std::vector<ONNXTensorElementDataType>& output_types = g_pcr_s_.output_types;
+        std::vector<OrtValue*>& output_tensors = g_pcr_s_.output_tensors;
+
+        size_t input_img_size = 1;
+        for(int k=0; k<input_node_dims[0].size(); ++k){
+            input_img_size *= input_node_dims[0][k];
+            // fprintf(stderr, "%d-input_node_dims[0][k]: %ld, input_img_size: %ld\n", k, input_node_dims[0][k], input_img_size);
+        }
+        size_t input_img_length = input_img_size * sizeof(float);
+        std::vector<float> input_img_fp32 = PreProcessor::mat_2_vec(stand_img);
+        // fprintf(stderr, "input_img_length: %ld, input_img_fp32 size: %ld\n", input_img_length, input_img_fp32.size());
+
+        /* only 1 input, move into input_tensors[0] */
+        OrtMemoryInfo* memory_info;
+        CheckStatus(g_ort_->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+        CheckStatus(g_ort_->CreateTensorWithDataAsOrtValue(
+                        memory_info, reinterpret_cast<void*>(input_img_fp32.data()), input_img_length,
+                        input_node_dims[0].data(), input_node_dims[0].size(), input_types[0], &input_tensors[0]));
+        g_ort_->ReleaseMemoryInfo(memory_info);
 
         /* do inference */
+        CheckStatus(g_ort_->Run(g_pcr_s_.sess, nullptr, input_node_names.data(), (const OrtValue* const*)input_tensors.data(),
+                        input_tensors.size(), output_node_names.data(), output_node_names.size(), output_tensors.data()));
 
         /* postprocess */
+        float angle = 0.0;
+        float type_prob_max = -1.0f;
+        int type = -1;
+        for(int i=0; i<output_node_names.size(); i++){
+            void* output_buffer;
+            CheckStatus(g_ort_->GetTensorMutableData(output_tensors[i], &output_buffer));
+            float* float_buffer = reinterpret_cast<float*>(output_buffer);
+            int output_size = 1;
+            for(int k=0; k<output_node_dims[i].size(); k++){
+                output_size *= output_node_dims[i][k];
+            }
+            fprintf(stderr, "output[%d] -  %s: \n", i, output_node_names[i]);
+            for(int k=0; k<output_size; k++){
+                fprintf(stderr, "%f\n", float_buffer[k]);
+            }
+
+            /* retrieve angle */
+            if(i==0){
+                angle = float_buffer[0] * 180.0f - 90.0f;
+            }
+            /* retrieve type */
+            else if(i==1){
+                for(int k=0; k<output_size; k++){
+                    if(float_buffer[k] > type_prob_max){
+                        type_prob_max = float_buffer[k];
+                        type = k;
+                    }
+                }
+            }
+
+        }
+        fprintf(stderr, "pcr angle: %f\n", angle);
+        fprintf(stderr, "pcr type: %d, prob: %f\n", type, type_prob_max);
+        det.angle = angle;
+        det.type = type;
 
         return true;
     }
 
-    bool run_psd_model(const cv::Mat& img, const float angle){
+    bool run_psd_model(const cv::Mat& img, const float angle, Detections_t& det){
+        /* define input tensor size, could retrieve from g_psd_s_, too */
+        static constexpr int PSD_W = 640;
+        static constexpr int PSD_H = 640;
+        /* preprocess */
+        cv::Mat resized_img = PreProcessor::resize(img, PSD_W, PSD_H);
+        cv::Mat norm_img = PreProcessor::normalize(resized_img);
+
+        /* prepare input data */
+        std::vector<const char*>& input_node_names = g_psd_s_.input_node_names;
+        std::vector<std::vector<int64_t>>& input_node_dims = g_psd_s_.input_node_dims;
+        std::vector<ONNXTensorElementDataType>& input_types = g_psd_s_.input_types;
+        std::vector<OrtValue*>& input_tensors = g_psd_s_.input_tensors;
+
+        std::vector<const char*>& output_node_names = g_psd_s_.output_node_names;
+        std::vector<std::vector<int64_t>>& output_node_dims = g_psd_s_.output_node_dims;
+        std::vector<ONNXTensorElementDataType>& output_types = g_psd_s_.output_types;
+        std::vector<OrtValue*>& output_tensors = g_psd_s_.output_tensors;
+
+        OrtMemoryInfo* memory_info;
+        CheckStatus(g_ort_->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+        std::vector<float> input_angle_fp32;
+        input_angle_fp32.emplace_back(angle);
+        size_t input_angle_length = 1 * sizeof(float);
+
+        /* input[0]-angle, type: 1, dims: (1,), move into input_tensors[0] */
+        CheckStatus(g_ort_->CreateTensorWithDataAsOrtValue(
+                        memory_info, reinterpret_cast<void*>(input_angle_fp32.data()), input_angle_length,
+                        input_node_dims[0].data(), input_node_dims[0].size(), input_types[0], &input_tensors[0]));
+
+        size_t input_img_size = 1;
+        for(int k=0; k<input_node_dims[1].size(); ++k){
+            input_img_size *= input_node_dims[1][k];
+            // fprintf(stderr, "%d-input_node_dims[0][k]: %ld, input_img_size: %ld\n", k, input_node_dims[0][k], input_img_size);
+        }
+        size_t input_img_length = input_img_size * sizeof(float);
+        std::vector<float> input_img_fp32 = PreProcessor::mat_2_vec(norm_img);
+        // fprintf(stderr, "input_img_length: %ld, input_img_fp32 size: %ld\n", input_img_length, input_img_fp32.size());
+
+        /* input[1]-image, type: 1, dims: (1,640,640,3,), move into input_tensors[1] */
+        CheckStatus(g_ort_->CreateTensorWithDataAsOrtValue(
+                        memory_info, reinterpret_cast<void*>(input_img_fp32.data()), input_img_length,
+                        input_node_dims[1].data(), input_node_dims[1].size(), input_types[1], &input_tensors[1]));
+        g_ort_->ReleaseMemoryInfo(memory_info);
+
+        /* do inference */
+        CheckStatus(g_ort_->Run(g_psd_s_.sess, nullptr, input_node_names.data(), (const OrtValue* const*)input_tensors.data(),
+                        input_tensors.size(), output_node_names.data(), output_node_names.size(), output_tensors.data()));
+
+        /* postprocess */
+        int64_t pkl_num = -1;
+        std::vector<Parklot_t>& parklots = det.parklots;
+        std::vector<float> boxes;
+        std::vector<int64_t> labels;
+        std::vector<float> quads;
+        std::vector<float> scores;
+        for(int i=0; i<output_node_names.size(); i++){
+            void* output_buffer;
+            CheckStatus(g_ort_->GetTensorMutableData(output_tensors[i], &output_buffer));
+            float* float_buffer = reinterpret_cast<float*>(output_buffer);
+            int64_t* int64_buffer = reinterpret_cast<int64_t*>(output_buffer);
+
+            /* dynamic output shape, we should retrieve again */
+            OrtTensorTypeAndShapeInfo* shape_info;
+            CheckStatus(g_ort_->CreateTensorTypeAndShapeInfo(&shape_info));
+            CheckStatus(g_ort_->GetTensorTypeAndShape(output_tensors[i], &shape_info));
+            size_t num_dims;
+            CheckStatus(g_ort_->GetDimensionsCount(shape_info, &num_dims));
+            std::vector<int64_t> out_node_dims;
+            out_node_dims.resize(num_dims);
+            CheckStatus(g_ort_->GetDimensions(shape_info, out_node_dims.data(), num_dims));
+
+            int output_size = 1;
+            std::string dimstr="(";
+            for(int k=0; k<num_dims; ++k){
+                output_size *= out_node_dims[k];
+                dimstr += std::to_string(out_node_dims[k]);
+                dimstr += ",";
+            }
+            dimstr += ")";
+
+            fprintf(stderr, "output[%d]-%s, type: %d, dims: %s, output_size: %d\n", i, output_node_names[i], output_types[i], dimstr.c_str(), output_size);
+            g_ort_->ReleaseTensorTypeAndShapeInfo(shape_info);
+
+            // for(int k=0; k<output_size; k++){
+            //     fprintf(stderr, "%f\n", float_buffer[k]);
+            // }
+
+            /* retrieve boxes */
+            if(i==0){
+                pkl_num = out_node_dims[0];
+                boxes.assign(float_buffer, float_buffer+output_size);
+            }
+            /* retrieve labels */
+            else if(i==1){
+                labels.assign(int64_buffer, int64_buffer+output_size);
+            }
+            /* retrieve quads */
+            else if(i==2){
+                quads.assign(float_buffer, float_buffer+output_size);
+            }
+            /* retrieve scores */
+            else if (i==3){
+                scores.assign(float_buffer, float_buffer+output_size);
+            }
+        }
+
+        for(int i=0; i<pkl_num; i++){
+            Parklot_t pkl;
+            for(int j=0; j<4; j++){
+                pkl.bbox[j] = boxes[4*i+j];
+            }
+            pkl.label = labels[i];
+            for(int j=0; j<8; j++){
+                pkl.quads[j] = quads[8*i+j];
+            }
+            pkl.score = scores[i]; 
+            fprintf(stderr, "parklot[%d], label: %ld, score: %.2f, bbox:[%.2f, %.2f, %.2f, %.2f], quads:[%.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f]\n", \
+            i, pkl.label, pkl.score, pkl.bbox[0], pkl.bbox[1], pkl.bbox[2], pkl.bbox[3], pkl.quads[0], pkl.quads[1], pkl.quads[2], pkl.quads[3], pkl.quads[4], pkl.quads[5], pkl.quads[6], pkl.quads[7]);
+        }
         return true;
+    }
+
+    void test_pcr_model(){
+        cv::Mat img = cv::Mat::ones(640, 640, CV_8UC3);
+        run_pcr_model(img, g_det_);
+    }
+
+    void test_psd_model(){
+        cv::Mat img = cv::Mat::ones(640, 640, CV_8UC3);
+        float angle = 0.0f;
+        run_psd_model(img, angle, g_det_);
     }
 
 private:
