@@ -2,7 +2,7 @@
 #include <fstream>
 #include <signal.h>
 #include <opencv2/opencv.hpp>
-#include "OnnxWrapper.h"
+#include "TestCarla.h"
 
 
 void signal_handler(int sig_num){
@@ -35,14 +35,16 @@ int main(int argc, char* argv[]){
     const std::string dataset_dir = base_dir + "pil_park/carla_town04/image";
     const std::string pcr_model_path = base_dir + "export/pcr.onnx";
     const std::string psd_model_path = base_dir + "export/psd.nms.onnx";
-    psdonnx::OnnxWrapper onnx_wrapper;
+    const std::string json_file_path = base_dir + "result/results.json";
+    // psdonnx::OnnxWrapper onnx_wrapper;
     // psdonnx::PreProcessor::test();
-    // const std::deque<std::string> img_path_list = onnx_wrapper.list_dir(dataset_dir);
     // onnx_wrapper.load_pcr_model(pcr_model_path);
     // onnx_wrapper.test_pcr_model();
-    onnx_wrapper.load_psd_model(psd_model_path);
-    onnx_wrapper.test_psd_model();
-    // onnx_wrapper.run_pcr(img_path_list);
+    // onnx_wrapper.load_psd_model(psd_model_path);
+    // onnx_wrapper.test_psd_model();
+    psdonnx::TestCarla test_carla(base_dir, json_file_path);
+    const std::deque<std::string> img_path_list = test_carla.list_dir(dataset_dir);
+    test_carla.run_test();
 
     return 0;
 }

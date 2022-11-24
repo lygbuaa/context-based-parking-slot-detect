@@ -28,11 +28,20 @@ public:
         mat_2_vec(norm_img);
         cv::Mat stand_img = standardize(resized_img);
         mat_2_vec(stand_img);
-        fprintf(stderr, "original_img w: %d, h: %d, type: %d, first: %d\n", img.cols, img.rows, img.type(), img.at<cv::Vec3b>(0, 0)[0]);
-        fprintf(stderr, "croped_img w: %d, h: %d, type: %d, first: %d\n", croped_img.cols, croped_img.rows, croped_img.type(), croped_img.at<cv::Vec3b>(0, 0)[0]);
-        fprintf(stderr, "resized_img img w: %d, h: %d, type: %d, first: %d\n", resized_img.cols, resized_img.rows, resized_img.type(), resized_img.at<cv::Vec3b>(0, 0)[0]);
-        fprintf(stderr, "norm_img w: %d, h: %d, type: %d, first: %f\n", norm_img.cols, norm_img.rows, norm_img.type(), norm_img.at<cv::Vec3f>(0, 0)[0]);
-        fprintf(stderr, "stand_img w: %d, h: %d, type: %d, first: %f\n", stand_img.cols, stand_img.rows, stand_img.type(), stand_img.at<cv::Vec3f>(0, 0)[0]);
+        cv::Vec3b original_pixel = img.at<cv::Vec3b>(0, 0);
+        fprintf(stderr, "original_img w: %d, h: %d, type: %d, first-pixel: %d-%d-%d\n", img.cols, img.rows, img.type(), original_pixel[0], original_pixel[1], original_pixel[2]);
+        cv::Vec3b croped_pixel = croped_img.at<cv::Vec3b>(0, 0);
+        fprintf(stderr, "croped_img w: %d, h: %d, type: %d, first-pixel: %d-%d-%d\n", croped_img.cols, croped_img.rows, croped_img.type(), croped_pixel[0], croped_pixel[1], croped_pixel[2]);
+        cv::Vec3b resized_pixel = resized_img.at<cv::Vec3b>(0, 0);
+        fprintf(stderr, "resized_img img w: %d, h: %d, type: %d, first-pixel: %d-%d-%d\n", resized_img.cols, resized_img.rows, resized_img.type(), resized_pixel[0], resized_pixel[1], resized_pixel[2]);
+        cv::Vec3f norm_pixel = norm_img.at<cv::Vec3f>(0, 0);
+        fprintf(stderr, "norm_img w: %d, h: %d, type: %d, first-pixel: %f-%f-%f\n", norm_img.cols, norm_img.rows, norm_img.type(), norm_pixel[0], norm_pixel[1], norm_pixel[2]);
+        cv::Vec3f stand_pixel = stand_img.at<cv::Vec3f>(0, 0);
+        fprintf(stderr, "stand_img w: %d, h: %d, type: %d, first-pixel: %f-%f-%f\n", stand_img.cols, stand_img.rows, stand_img.type(), stand_pixel[0], stand_pixel[1], stand_pixel[2]);
+    }
+
+    static void bgr2rgb(cv::Mat& img){
+        cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
     }
 
     static cv::Mat crop(const cv::Mat& img, const cv::Rect& roi){
@@ -49,23 +58,26 @@ public:
     static cv::Mat normalize(const cv::Mat& img){
         cv::Mat norm_img;
         img.convertTo(norm_img, CV_32FC3, 1.0f/255, 0.0f);  //divided by 255
+        cv::Vec3f norm_pixel = norm_img.at<cv::Vec3f>(0, 0);
+        fprintf(stderr, "norm_img w: %d, h: %d, type: %d, first-pixel: %f-%f-%f\n", norm_img.cols, norm_img.rows, norm_img.type(), norm_pixel[0], norm_pixel[1], norm_pixel[2]);
         return norm_img;
     }
 
+    /* input img should be rgb format */
     static cv::Mat standardize(const cv::Mat& img){
-        static const float bgr_mean[3] = {131.598f, 129.137f, 131.301f};
-        static const float bgr_std[3] = {59.811f, 58.877f, 59.523f};
+        static const float rgb_mean[3] = {131.301f, 129.137f, 131.598f};
+        static const float rgb_std[3] = {59.523f, 58.877f, 59.811f};
         
-	    std::vector<cv::Mat> bgr_ch(3);
-        cv::split(img, bgr_ch);
+	    std::vector<cv::Mat> rgb_ch(3);
+        cv::split(img, rgb_ch);
         //blue chanel
         for(int i=0; i<3; i++){
-            bgr_ch[i].convertTo(bgr_ch[i], CV_32F, 1.0f, -1*bgr_mean[i]);
-            bgr_ch[i].convertTo(bgr_ch[i], CV_32F, 1.0f/bgr_std[i], 0.0f);
+            rgb_ch[i].convertTo(rgb_ch[i], CV_32F, 1.0f, -1*rgb_mean[i]);
+            rgb_ch[i].convertTo(rgb_ch[i], CV_32F, 1.0f/rgb_std[i], 0.0f);
         }
 
         cv::Mat stand_img;
-        cv::merge(bgr_ch, stand_img);
+        cv::merge(rgb_ch, stand_img);
         return stand_img;
     }
 
@@ -73,58 +85,18 @@ public:
         std::vector<float> array;
         bool is_conti = img.isContinuous();
         if (is_conti) {
-        // array.assign(mat.datastart, mat.dataend); // <- has problems for sub-matrix like mat = big_mat.row(i)
-            array.assign(img.data, img.data + img.total() * img.channels());
+            /* should not use img.data */
+            array.assign(img.ptr<float>(0), img.ptr<float>(0) + img.total() * img.channels());
         } else {
             for (int i = 0; i < img.rows; ++i) {
                 array.insert(array.end(), img.ptr<float>(i), img.ptr<float>(i)+img.cols*img.channels());
             }
         }
-        fprintf(stderr, "img is_conti: %d, img.total: %ld, img.channels: %d, array size: %ld\n", is_conti, img.total(), img.channels(), array.size());
+        // cv::Vec3f img_pixel = img.at<cv::Vec3f>(0, 0);
+        // fprintf(stderr, "img is_conti: %d, img.total: %ld, img.channels: %d, array size: %ld\n", is_conti, img.total(), img.channels(), array.size());
+        // fprintf(stderr, "img first-pixel: %f-%f-%f\n", img_pixel[0], img_pixel[1], img_pixel[2]);
+        // fprintf(stderr, "array first-pixel: %f-%f-%f\n", array[0], array[1], array[2]);
         return array;
-    }
-
-public:
-    static std::string gen_output_path(const std::string input_img_path){
-        const char* file_name = basename(const_cast<char*>(input_img_path.c_str()));
-        std::string output_path = "./output/";
-        output_path += file_name;
-        output_path += ".psd.png";
-        return output_path;
-    }
-
-    static uint64_t current_micros() {
-        return std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::time_point_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now()).time_since_epoch()).count();
-    }
-
-    static std::deque<std::string> list_dir(const std::string dirpath){
-        DIR* dp;
-        std::deque<std::string> v_file_list;
-        dp = opendir(dirpath.c_str());
-        if (nullptr == dp){
-            std::cout << "read dirpath failed: " << dirpath << std::endl;
-            return v_file_list;
-        }
-
-        struct dirent* entry;
-        while((entry = readdir(dp))){
-            if(DT_DIR == entry->d_type){
-                std::cout << "subdirectory ignored: " << entry->d_name << std::endl;
-                continue;
-            }else if(DT_REG == entry->d_type){
-                std::string filepath = dirpath + "/" + entry->d_name;
-                v_file_list.emplace_back(filepath);
-            }
-        }
-        //sort into ascending order
-        std::sort(v_file_list.begin(), v_file_list.end());
-        // for(auto& fp : v_file_list){
-        //     LOG(INFO) << "filepath: " << fp;
-        // }
-
-        return v_file_list;
     }
 
 };

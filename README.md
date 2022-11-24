@@ -10,6 +10,8 @@ output[0]-boxes, type: 1, dims: (-1,4,)
 output[1]-labels, type: 7, dims: (-1,)
 output[2]-quads, type: 1, dims: (-1,8,)
 output[3]-scores, type: 1, dims: (-1,)
+3. cv::imread outputs bgr
+   tf.image_decode_png outputs rgb
 
 # carla ipm standardization
 1. ave_mean_rgb: [131.30127093 129.13795222 131.59807384], ave_std: [59.52365323 58.87736721 59.81127821]

@@ -10,6 +10,23 @@
 
 namespace psdonnx
 {
+typedef struct{
+    // x0, y0, x1, y1
+    float bbox[4] = {-1.0f};
+    int64_t label = -1;
+    float quads[8] = {-1.0f};
+    float score = -1.0f;
+}Parklot_t;
+
+typedef struct{
+    int idx = -1;
+    std::string img_path;
+    float angle = 0.0f;
+    int type = -1;
+    int h = 0;
+    int w = 0;
+    std::vector<Parklot_t> parklots;
+}Detections_t;
 
 class OnnxWrapper
 {
@@ -38,26 +55,10 @@ public:
         std::vector<OrtValue*> output_tensors;
     }ORT_S_t;
 
-    typedef struct{
-        // x0, y0, x1, y1
-        float bbox[4] = {-1.0f};
-        int64_t label = -1;
-        float quads[8] = {-1.0f};
-        float score = -1.0f;
-    }Parklot_t;
-
-    typedef struct{
-        float angle = 0.0f;
-        int type = -1;
-        std::vector<Parklot_t> parklots;
-    }Detections_t;
-
 private:
     const OrtApi* g_ort_ = nullptr;
     const OrtApiBase* g_ort_base_ = nullptr;
     OrtEnv* env_ = nullptr;
-    // OrtSession* pcr_session_ = nullptr;
-    // OrtSession* psd_session_ = nullptr;
     OrtSessionOptions* session_options_ = nullptr;
 
     ORT_S_t g_pcr_s_;
@@ -73,13 +74,6 @@ public:
         destroy_ort();
     }
 
-    void test_carla_ipm(const std::deque<std::string>& img_path_list){
-        const int N = img_path_list.size();
-        for(int i=0; i<N; ++i){
-            std::cout << i << ", " << img_path_list[i] << std::endl;
-        }
-    }
-
     bool load_pcr_model(const std::string& model_path){
         return load_model(model_path, g_pcr_s_);
     }
@@ -88,6 +82,7 @@ public:
         return load_model(model_path, g_psd_s_);
     }
 
+    /* img should be rgb format */
     bool run_pcr_model(const cv::Mat& img, Detections_t& det){
         /* define input tensor size, could retrieve from g_pcr_s_, too */
         static constexpr int PCR_W = 64;
@@ -100,7 +95,7 @@ public:
         int roi_h = roi_w * 3;
         cv::Rect roi(0, 0, roi_w, roi_h);
         cv::Mat croped_img = PreProcessor::crop(img, roi);
-        cv::Mat resized_img = PreProcessor::resize(img, PCR_W, PCR_H);
+        cv::Mat resized_img = PreProcessor::resize(croped_img, PCR_W, PCR_H);
         cv::Mat stand_img = PreProcessor::standardize(resized_img);
 
         /* prepare input data */
@@ -175,6 +170,7 @@ public:
         return true;
     }
 
+    /* img should be rgb format */
     bool run_psd_model(const cv::Mat& img, const float angle, Detections_t& det){
         /* define input tensor size, could retrieve from g_psd_s_, too */
         static constexpr int PSD_W = 640;
@@ -280,6 +276,12 @@ public:
             else if (i==3){
                 scores.assign(float_buffer, float_buffer+output_size);
             }
+
+            /* output dynamic shape, release last output_tensors */
+            if(output_tensors[i]){
+                g_ort_ -> ReleaseValue(output_tensors[i]);
+                output_tensors[i] = nullptr;
+            }
         }
 
         for(int i=0; i<pkl_num; i++){
@@ -291,7 +293,8 @@ public:
             for(int j=0; j<8; j++){
                 pkl.quads[j] = quads[8*i+j];
             }
-            pkl.score = scores[i]; 
+            pkl.score = scores[i];
+            det.parklots.emplace_back(pkl);
             fprintf(stderr, "parklot[%d], label: %ld, score: %.2f, bbox:[%.2f, %.2f, %.2f, %.2f], quads:[%.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f]\n", \
             i, pkl.label, pkl.score, pkl.bbox[0], pkl.bbox[1], pkl.bbox[2], pkl.bbox[3], pkl.quads[0], pkl.quads[1], pkl.quads[2], pkl.quads[3], pkl.quads[4], pkl.quads[5], pkl.quads[6], pkl.quads[7]);
         }
@@ -300,11 +303,13 @@ public:
 
     void test_pcr_model(){
         cv::Mat img = cv::Mat::ones(640, 640, CV_8UC3);
+        PreProcessor::bgr2rgb(img);
         run_pcr_model(img, g_det_);
     }
 
     void test_psd_model(){
         cv::Mat img = cv::Mat::ones(640, 640, CV_8UC3);
+        PreProcessor::bgr2rgb(img);
         float angle = 0.0f;
         run_psd_model(img, angle, g_det_);
     }
