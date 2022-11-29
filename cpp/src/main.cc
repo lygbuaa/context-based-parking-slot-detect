@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <opencv2/opencv.hpp>
 #include "TestCarla.h"
+#include "JsonDataset.h"
 
 
 void signal_handler(int sig_num){
@@ -42,9 +43,13 @@ int main(int argc, char* argv[]){
     // onnx_wrapper.test_pcr_model();
     // onnx_wrapper.load_psd_model(psd_model_path);
     // onnx_wrapper.test_psd_model();
-    psdonnx::TestCarla test_carla(base_dir, json_file_path);
-    const std::deque<std::string> img_path_list = test_carla.list_dir(dataset_dir);
-    test_carla.run_test();
+    // psdonnx::TestCarla test_carla(base_dir, json_file_path);
+    // const std::deque<std::string> img_path_list = test_carla.list_dir(dataset_dir);
+    // test_carla.run_test();
 
+    psdonnx::JsonDataset jds(base_dir+"result");
+    jds.test_writer();
+    sleep(1);
+    jds.test_reader();
     return 0;
 }
